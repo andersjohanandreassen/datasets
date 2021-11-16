@@ -17,9 +17,14 @@
 
 import csv
 import json
+import numpy as np
 import os
 
 import datasets
+
+from .bigbench_utils import _sanitize_task_data
+from .bigbench_utils import make_nshot_dataset
+from .bigbench_utils import default_format_fn
 
 
 # TODO: Add BibTeX citation
@@ -55,30 +60,49 @@ _URLs = {
 }
 
 
+# class BigBenchConfig(datasets.BuilderConfig):
+#     def __init__(self, url, lite, description, mode, *args, num_shots=1, **kwargs):
+#         super().__init__(
+#             *args,
+#             # name=f"{type}-{task_no}",
+#             **kwargs,
+#         )
+#         self.url = url
+#         # self.type = type
+#         # self.task_no = task_no
+#         self.mode = 'multiple_choice'
+#         self.num_shots = num_shots
+
 class BigBenchConfig(datasets.BuilderConfig):
-    def __init__(self, url, lite, description, mode, *args,**kwargs):
+    def __init__(self, task_name, *args, subtask_name = None, num_shots=1, **kwargs):
         super().__init__(
             *args,
             # name=f"{type}-{task_no}",
             **kwargs,
         )
-        self.url = url
-        # self.type = type
-        # self.task_no = task_no
+        self.task_name = task_name
+        self.subtask_name = subtask_name
+        self.num_shots = num_shots
+
         self.mode = 'multiple_choice'
 
-TASKS = {'winowhy': {'lite':True, 
-                     'url':"https://raw.githubusercontent.com/google/BIG-bench/main/bigbench/benchmark_tasks/winowhy/task.json",
-                     'description': "commonsense reasoning multiple choice using JSON",
-                     'mode':"multiple_choice",
-                     },
-        'logic_grid_puzzle': {'lite':False, 
-                     'url':"https://raw.githubusercontent.com/google/BIG-bench/main/bigbench/benchmark_tasks/logic_grid_puzzle/task.json",
-                     'description': "Solve logic grid puzzles",
-                     'mode':"multiple_choice",
-                     }
+        if self.subtask_name is None:
+            self.url = f"https://raw.githubusercontent.com/google/BIG-bench/main/bigbench/benchmark_tasks/{self.task_name}/task.json"
+        else:
+            self.url = f"https://raw.githubusercontent.com/google/BIG-bench/main/bigbench/benchmark_tasks/{self.task_name}/{self.subtask_name}/task.json"
 
-        }
+# TASKS = {'winowhy': {'lite':True, 
+#                      'url':"https://raw.githubusercontent.com/google/BIG-bench/main/bigbench/benchmark_tasks/winowhy/task.json",
+#                      'description': "commonsense reasoning multiple choice using JSON",
+#                      'mode':"multiple_choice",
+#                      },
+#         'logic_grid_puzzle': {'lite':False, 
+#                      'url':"https://raw.githubusercontent.com/google/BIG-bench/main/bigbench/benchmark_tasks/logic_grid_puzzle/task.json",
+#                      'description': "Solve logic grid puzzles",
+#                      'mode':"multiple_choice",
+#                      }
+
+#         }
 
 
 # TODO: Name of the dataset usually match the script name with CamelCase instead of snake_case
@@ -87,27 +111,8 @@ class BigBench(datasets.GeneratorBasedBuilder):
 
     VERSION = datasets.Version("1.0.0")
 
-    # This is an example of a dataset with multiple configurations.
-    # If you don't want/need to define several sub-sets in your dataset,
-    # just remove the BUILDER_CONFIG_CLASS and the BUILDER_CONFIGS attributes.
+    BUILDER_CONFIG_CLASS = BigBenchConfig
 
-    # If you need to make complex sub-parts in the datasets with configurable options
-    # You can create your own builder configuration class to store attribute, inheriting from datasets.BuilderConfig
-    # BUILDER_CONFIG_CLASS = MyBuilderConfig
-
-    # You will be able to load one or the other configurations in the following list with
-    # data = datasets.load_dataset('my_dataset', 'first_domain')
-    # data = datasets.load_dataset('my_dataset', 'second_domain')
-    BUILDER_CONFIGS = []
-    for task_name, config in TASKS.items():
-        BUILDER_CONFIGS.append(BigBenchConfig(name=task_name, version=datasets.Version("1.0.0"), **config) )
-    # [
-    #     BigBenchConfig(name="all", version=VERSION, description="All BIG-Bench tasks."),
-    #     BigBenchConfig(name="lite", version=VERSION, description="All BIG-Bench lite tasks.")
-    #     ] 
-    #     + 
-
-    DEFAULT_CONFIG_NAME = "winowhy"
 
     def _info(self):
         if self.config.mode == 'multiple_choice':
@@ -169,10 +174,21 @@ class BigBench(datasets.GeneratorBasedBuilder):
         """ Yields examples as (key, example) tuples. """
         # This method handles input defined in _split_generators to yield (key, example) tuples from the dataset.
         # The `key` is here for legacy reason (tfds) and is not important in itself.
-
+        rng = np.random.RandomState() #TODO(ajandreassen): make sure rng states are called in the same way as in big bench. Are they reused, or re-initialized?
         with open(filepath, encoding="utf-8") as f:
-            data = json.load(f)
-            examples = data['examples']
+            task_data = json.load(f)
+            input_prefix = task_data.get("example_input_prefix", "\nQ: ")
+            output_prefix = task_data.get("example_output_prefix", "\nA: ")
+            choice_prefix = task_data.get("choice_prefix", "\n  choice: ")
+            examples = task_data['examples']
+            examples = _sanitize_task_data(examples)
+            examples = [default_format_fn(ex,
+                                        input_prefix=input_prefix,
+                                        output_prefix=output_prefix,
+                                        choice_prefix=choice_prefix,
+                                        rng = rng,
+                                       ) for ex in examples ]
+            examples = make_nshot_dataset(examples, shots=self.config.num_shots ,rng = rng)
             for id, example in enumerate(examples):
                 if self.config.mode == "multiple_choice":
                     yield id, {
