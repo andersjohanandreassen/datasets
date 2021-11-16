@@ -74,7 +74,15 @@ _URLs = {
 #         self.num_shots = num_shots
 
 class BigBenchConfig(datasets.BuilderConfig):
-    def __init__(self, task_name, *args, subtask_name = None, num_shots=1, **kwargs):
+    def __init__(self,
+                 task_name: str,
+                 num_shots: int,
+                 *args, 
+                 subtask_name: str = None, 
+                 input_prefix: str = None,
+                 output_prefix: str = None,
+                 choice_prefix: str = None, 
+                 **kwargs):
         super().__init__(
             *args,
             # name=f"{type}-{task_no}",
@@ -83,6 +91,9 @@ class BigBenchConfig(datasets.BuilderConfig):
         self.task_name = task_name
         self.subtask_name = subtask_name
         self.num_shots = num_shots
+        self.input_prefix = input_prefix
+        self.output_prefix = output_prefix
+        self.choice_prefix = choice_prefix
 
         self.mode = 'multiple_choice'
 
@@ -90,19 +101,6 @@ class BigBenchConfig(datasets.BuilderConfig):
             self.url = f"https://raw.githubusercontent.com/google/BIG-bench/main/bigbench/benchmark_tasks/{self.task_name}/task.json"
         else:
             self.url = f"https://raw.githubusercontent.com/google/BIG-bench/main/bigbench/benchmark_tasks/{self.task_name}/{self.subtask_name}/task.json"
-
-# TASKS = {'winowhy': {'lite':True, 
-#                      'url':"https://raw.githubusercontent.com/google/BIG-bench/main/bigbench/benchmark_tasks/winowhy/task.json",
-#                      'description': "commonsense reasoning multiple choice using JSON",
-#                      'mode':"multiple_choice",
-#                      },
-#         'logic_grid_puzzle': {'lite':False, 
-#                      'url':"https://raw.githubusercontent.com/google/BIG-bench/main/bigbench/benchmark_tasks/logic_grid_puzzle/task.json",
-#                      'description': "Solve logic grid puzzles",
-#                      'mode':"multiple_choice",
-#                      }
-
-#         }
 
 
 # TODO: Name of the dataset usually match the script name with CamelCase instead of snake_case
@@ -177,9 +175,22 @@ class BigBench(datasets.GeneratorBasedBuilder):
         rng = np.random.RandomState() #TODO(ajandreassen): make sure rng states are called in the same way as in big bench. Are they reused, or re-initialized?
         with open(filepath, encoding="utf-8") as f:
             task_data = json.load(f)
-            input_prefix = task_data.get("example_input_prefix", "\nQ: ")
-            output_prefix = task_data.get("example_output_prefix", "\nA: ")
-            choice_prefix = task_data.get("choice_prefix", "\n  choice: ")
+            
+            if not self.config.input_prefix:
+                input_prefix = task_data.get("example_input_prefix", "\nQ: ")
+            else:
+                input_prefix = self.config.input_prefix
+
+            if not self.config.output_prefix:
+                output_prefix = task_data.get("example_output_prefix", "\nA: ")
+            else:
+                output_prefix = self.config.output_prefix
+
+            if not self.config.choice_prefix:
+                choice_prefix = task_data.get("choice_prefix", "\n  choice: ")
+            else:
+                choice_prefix = self.config.choice_prefix
+
             examples = task_data['examples']
             examples = _sanitize_task_data(examples)
             examples = [default_format_fn(ex,
