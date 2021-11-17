@@ -60,19 +60,6 @@ _URLs = {
 }
 
 
-# class BigBenchConfig(datasets.BuilderConfig):
-#     def __init__(self, url, lite, description, mode, *args, num_shots=1, **kwargs):
-#         super().__init__(
-#             *args,
-#             # name=f"{type}-{task_no}",
-#             **kwargs,
-#         )
-#         self.url = url
-#         # self.type = type
-#         # self.task_no = task_no
-#         self.mode = 'multiple_choice'
-#         self.num_shots = num_shots
-
 class BigBenchConfig(datasets.BuilderConfig):
     def __init__(self,
                  task_name: str,
@@ -113,21 +100,12 @@ class BigBench(datasets.GeneratorBasedBuilder):
 
 
     def _info(self):
-        if self.config.mode == 'multiple_choice':
-            features = datasets.Features(
-                {
-                    "input": datasets.Value("string"),
-                    "targets": datasets.Sequence(datasets.Value("string")),
-                    "labels": datasets.Sequence(datasets.Value("int32")),
-                }
-            )
-        else: 
-            features = datasets.Features(
-                {
-                    "input": datasets.Value("string"),
-                    "target": datasets.Value("string"),
-                }
-            )
+        features = datasets.Features(
+            {
+                "input": datasets.Value("string"),
+                "targets": datasets.Sequence(datasets.Value("string")),
+                "labels": datasets.Sequence(datasets.Value("int32")),
+            })
         return datasets.DatasetInfo(
             # This is the description that will appear on the datasets page.
             description=_DESCRIPTION,
@@ -201,7 +179,8 @@ class BigBench(datasets.GeneratorBasedBuilder):
                                        ) for ex in examples ]
             examples = make_nshot_dataset(examples, shots=self.config.num_shots ,rng = rng)
             for id, example in enumerate(examples):
-                if self.config.mode == "multiple_choice":
+                # print(example)
+                if "target_scores" in example:
                     yield id, {
                         "input": example["input"],
                         "targets": list(example["target_scores"].keys()),
@@ -210,5 +189,6 @@ class BigBench(datasets.GeneratorBasedBuilder):
                 else:
                     yield id, {
                         "input": example["input"],
-                        "target": example["target"]
+                        "targets": example["target"],
+                        "labels": [1],
                     }
