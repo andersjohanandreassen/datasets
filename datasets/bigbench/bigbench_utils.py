@@ -78,6 +78,35 @@ def _sanitize_task_data(task_data: Any) -> Any:
     return output
 
 
+def remove_duplicates(task_data, num_shots):
+    # remove duplicates, keeping example order the same
+    example_set = set()
+    distinct_examples = []
+    for x in task_data["examples"]:
+        try:
+            example_string = json.dumps(x)
+        except TypeError as e:
+            print(f"example_string failure: {x}")
+            raise e
+
+        if example_string in example_set:
+            continue
+        else:
+            distinct_examples.append(x)
+            example_set.add(example_string)
+
+    num_examples = len(task_data["examples"])
+    num_distinct = len(distinct_examples)
+    num_duplicates = num_examples - num_distinct
+
+    if num_distinct < (num_shots + 1):
+        raise ValueError(
+            f"insufficient distinct examples ({num_distinct}) for {num_shots} shots"
+        )
+
+    return distinct_examples
+
+
 def make_nshot_dataset(
     samples: List[Dict[str, Any]],
     shots: int,

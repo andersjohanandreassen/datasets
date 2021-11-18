@@ -19,12 +19,14 @@ import csv
 import json
 import numpy as np
 import os
+from typing import Optional
 
 import datasets
 
 from .bigbench_utils import _sanitize_task_data
 from .bigbench_utils import make_nshot_dataset
 from .bigbench_utils import default_format_fn
+from .bigbench_utils import remove_duplicates
 
 
 # TODO: Add BibTeX citation
@@ -69,6 +71,8 @@ class BigBenchConfig(datasets.BuilderConfig):
                  input_prefix: str = None,
                  output_prefix: str = None,
                  choice_prefix: str = None, 
+                 random_seed: int = 42,
+                 max_examples: Optional[int] = None,
                  **kwargs):
         super().__init__(
             *args,
@@ -81,8 +85,8 @@ class BigBenchConfig(datasets.BuilderConfig):
         self.input_prefix = input_prefix
         self.output_prefix = output_prefix
         self.choice_prefix = choice_prefix
-
-        self.mode = 'multiple_choice'
+        self.random_seed = random_seed
+        self.max_examples = max_examples
 
         if self.subtask_name is None:
             self.url = f"https://raw.githubusercontent.com/google/BIG-bench/main/bigbench/benchmark_tasks/{self.task_name}/task.json"
@@ -150,7 +154,7 @@ class BigBench(datasets.GeneratorBasedBuilder):
         """ Yields examples as (key, example) tuples. """
         # This method handles input defined in _split_generators to yield (key, example) tuples from the dataset.
         # The `key` is here for legacy reason (tfds) and is not important in itself.
-        rng = np.random.RandomState() #TODO(ajandreassen): make sure rng states are called in the same way as in big bench. Are they reused, or re-initialized?
+        # TODO(ajandreassen): make sure rng states are called in the same way as in big bench. Are they reused, or re-initialized?
         with open(filepath, encoding="utf-8") as f:
             task_data = json.load(f)
             
@@ -169,15 +173,26 @@ class BigBench(datasets.GeneratorBasedBuilder):
             else:
                 choice_prefix = self.config.choice_prefix
 
-            examples = task_data['examples']
+            examples = remove_duplicates(task_data, self.config.num_shots) 
+
             examples = _sanitize_task_data(examples)
             examples = [default_format_fn(ex,
                                         input_prefix=input_prefix,
                                         output_prefix=output_prefix,
                                         choice_prefix=choice_prefix,
-                                        rng = rng,
+                                        rng = np.random.RandomState(seed = self.config.random_seed),
                                        ) for ex in examples ]
-            examples = make_nshot_dataset(examples, shots=self.config.num_shots ,rng = rng)
+
+            if self.config.max_examples:
+                max_examples = self.config.max_examples
+            else:
+                max_examples = len(examples)
+
+            examples = make_nshot_dataset(examples, 
+                                          shots=self.config.num_shots,
+                                          rng = np.random.RandomState(seed = self.config.random_seed),
+                                          max_examples = max_examples)
+
             for id, example in enumerate(examples):
                 # print(example)
                 if "target_scores" in example:
@@ -190,5 +205,5 @@ class BigBench(datasets.GeneratorBasedBuilder):
                     yield id, {
                         "input": example["input"],
                         "targets": example["target"],
-                        "labels": [1],
+                        "labels": [1 for _ in example["target"]],
                     }
