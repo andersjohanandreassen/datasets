@@ -95,8 +95,8 @@ workflows:
     version: 2
     build_and_test:
         jobs:
-            - check_code_quality
+            #- check_code_quality
             - run_dataset_script_tests_pyarrow_latest
-            - run_dataset_script_tests_pyarrow_5
-            - run_dataset_script_tests_pyarrow_latest_WIN
-            - run_dataset_script_tests_pyarrow_5_WIN
+            #- run_dataset_script_tests_pyarrow_5
+            #- run_dataset_script_tests_pyarrow_latest_WIN
+            #- run_dataset_script_tests_pyarrow_5_WIN
